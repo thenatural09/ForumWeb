@@ -1,5 +1,6 @@
 package com.company;
 
+import org.h2.tools.Server;
 import spark.ModelAndView;
 import spark.Session;
 import spark.Spark;
@@ -10,9 +11,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 
 public class Main {
-
-    static HashMap<String,User> users = new HashMap<>();
-    static ArrayList<Message> messages = new ArrayList<>();
 
     public static void createTables(Connection conn) throws SQLException {
         Statement stmt = conn.createStatement();
@@ -74,15 +72,10 @@ public class Main {
         return messages;
     }
 
-    public static void main(String[] args) {
-        users.put("Alice", new User("Alice","pass"));
-        users.put("Bob",new User("Bob","pass"));
-        users.put("Charlie",new User("Charlie","pass"));
-
-        messages.add(new Message(0,-1,"Alice","Hello everyone!"));
-        messages.add(new Message(1,-1,"Bob","This is another thread!"));
-        messages.add(new Message(2,0,"Charlie","Cool thread, Alice!"));
-        messages.add(new Message(3,2,"Alice","Thanks, Charlie!"));
+    public static void main(String[] args) throws SQLException {
+        Server.createWebServer().start();
+        Connection conn = DriverManager.getConnection("jdbc:h2:./main");
+        createTables(conn);
 
         Spark.get(
                 "/",
@@ -96,12 +89,7 @@ public class Main {
                     String name = session.attribute("loginName");
 
                     HashMap m = new HashMap();
-                    ArrayList<Message> msgs = new ArrayList<>();
-                    for (Message message : messages) {
-                        if (message.replyId == idNum) {
-                            msgs.add(message);
-                        }
-                    }
+                    ArrayList<Message> msgs = selectReplies(conn,idNum);
                     m.put("messages",msgs);
                     m.put("name",name);
                     m.put("replyId",idNum);
@@ -115,10 +103,9 @@ public class Main {
                 (request,response) -> {
                     String name = request.queryParams("loginName");
                     String password = request.queryParams("password");
-                    User user = users.get(name);
+                    User user = selectUser(conn,name);
                     if (user == null) {
-                        user = new User(name,password);
-                        users.put(name,user);
+                        insertUser(conn,name,password);
                     }
                     else if(!password.equals(user.password)) {
                         Spark.halt(403);
@@ -139,8 +126,21 @@ public class Main {
                     int replyId = Integer.valueOf(request.queryParams("replyId"));
                     Session session = request.session();
                     String name = session.attribute("loginName");
-                    Message message = new Message(messages.size(),replyId,name,text);
-                    messages.add(message);
+                    User user = selectUser(conn,name);
+                    if (user == null) {
+                        throw new Exception("Not logged in!");
+                    }
+                    insertMessage(conn,replyId,text,user.id);
+                    response.redirect(request.headers("Referer"));
+                    return null;
+                }
+        );
+
+        Spark.post(
+                "/logout",
+                (request,response) -> {
+                    Session session = request.session();
+                    session.invalidate();
                     response.redirect(request.headers("Referer"));
                     return null;
                 }
