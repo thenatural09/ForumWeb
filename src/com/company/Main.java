@@ -39,6 +39,41 @@ public class Main {
         return null;
     }
 
+    public static void insertMessage(Connection conn,int replyId,String text,int userId) throws SQLException {
+        PreparedStatement stmt = conn.prepareStatement("INSERT INTO messages VALUES(null,?,?,?)");
+        stmt.setInt(1,replyId);
+        stmt.setString(2,text);
+        stmt.setInt(3,userId);
+        stmt.execute();
+    }
+
+    public static Message selectMessage(Connection conn,int id) throws SQLException {
+        PreparedStatement stmt = conn.prepareStatement("SELECT * FROM messages INNER JOIN users ON messages.user_id = users.id WHERE messages.id = ?");
+        stmt.setInt(1,id);
+        ResultSet results = stmt.executeQuery();
+        if (results.next()) {
+            int replyId = results.getInt("messages.reply_id");
+            String text = results.getString("messages.text");
+            String author = results.getString("users.name");
+            return new Message(id,replyId,author,text);
+        }
+        return null;
+    }
+
+    public static ArrayList<Message> selectReplies (Connection conn,int replyId) throws SQLException {
+        ArrayList<Message> messages = new ArrayList<>();
+        PreparedStatement stmt = conn.prepareStatement("SELECT * FROM messages INNER JOIN users ON messages.user_id = users.id WHERE messages.reply_id = ?");
+        stmt.setInt(1,replyId);
+        ResultSet results = stmt.executeQuery();
+        while(results.next()) {
+            int id = results.getInt("messages.id");
+            String text = results.getString("messages.text");
+            String author = results.getString("users.name");
+            messages.add(new Message(id,replyId,author,text));
+        }
+        return messages;
+    }
+
     public static void main(String[] args) {
         users.put("Alice", new User("Alice","pass"));
         users.put("Bob",new User("Bob","pass"));
